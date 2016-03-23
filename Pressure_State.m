@@ -1,0 +1,10 @@
+function Ts = Pressure_State(Ps)
+n = satTable;
+T_dimless = 1;
+P_dimless = 1;
+B = ( Ps ./ P_dimless ).^(1/4);
+E = B.^2 + n(3) .* B + n(6);
+F = n(1) * B.^2 + n(4) * B + n(7);
+G = n(2) * B.^2 + n(5) * B + n(8);
+D = (( 2 * G ) ./ ( -F - ( F.^2 - 4 * E.* G ).^(1/2) ));
+Ts = T_dimless * ( n(10) + D - ( ( n(10) + D).^2 - 4 * ( n(9) + n(10) * D ) ).^(1/2) ) ./ 2;

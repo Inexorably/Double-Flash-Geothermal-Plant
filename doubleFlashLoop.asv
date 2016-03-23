@@ -1,0 +1,173 @@
+%Housekeeping.  Memory usage is of a concern for large num values.
+clear all
+close all
+clc
+
+%This is the file which will loop the doubleFlash.m script.
+%Please note that you should have downloaded the XSteam files in order to
+%run this, as doubleFlash is dependant on those files.
+%Update: this script is now also dependant on point.m.
+
+%We begin by testing my script's functionality with a brine temperature of
+%260 C and a condensor temperature of 30 C.
+
+%To output runtime.
+tic
+
+%Global
+%I wrote doubleFlash as a script originally, and not a function.  Due to
+%matlab being obtuse unlike c, we will get around rewriting the script by
+%using the following variable to check whether or not doubleFlassh is being
+%called as a function.  This is accomplished in doubleFlash with the exist
+%function.
+loop = true;
+
+%We now generate our values for t2 and t6 which we shall loop through.
+%Note that time complexity is num squared.  Num is the number of data
+%points which will comprise t2 and t6.
+%Note that run time gets really large.  I'm estimating 12.5 hours for num =
+%150.
+num = 10;
+tMin = 100;
+tMax = 350;
+vt6 = linspace(tMin, tMax, num);
+vt2 = linspace(tMin, tMax, num);
+
+%Make each into kelvin from celsius.
+vt2 = vt2 + 273.15;
+vt6 = vt6 + 273.15;
+
+%We now preallocate for the vectors which store the variables we will plot.
+%We will use a custom struct to store our variables.
+%Defined in point.m.
+points = [point];
+vSSI = zeros(1, num * num);
+vx5 = zeros(1, num * num);
+vx10 = zeros(1, num * num);
+vw = zeros(1, num * num);
+vt2O = zeros(1, num * num); %Ordered vt2 array.  Squared size of vt2.
+vt6O = zeros(1, num * num);
+
+
+%We now loop through each t2 and t6 value, and generate the outputs with
+%which we will plot.
+%We will fill out this point and then move it into the points cell
+%array.  We save computation time by having it outside of the for loop
+%(such that wasted assignments don't occur).
+temp = point;
+
+%Display messages.
+disp(strcat(['You are running ', num2str(num^2), ' simulations.']))
+disp('Entering simulations loop.')
+wait = waitbar(0, strcat(['Simulations ', num2str(0), '% Complete.']));
+for i=1:length(vt2)
+    for j=1:length(vt6)        
+        %Member variables are: SSI, x5, x10, t2, t6.
+        %Call the double flash script.
+        t2 = vt2(i);
+        t6 = vt6(j);
+        doubleFlash
+        
+        %Set the values generated in doubleFlash.
+        temp.SSI = SSI;
+        vSSI((i-1)*size(vt6)+j) = SSI;
+        temp.x5 = x5;
+        vx5((i-1)*size(vt6)+j) = x5;
+        temp.x10 = x10;
+        vx10((i-1)*size(vt6)+j) = x10;
+        temp.w = w;
+        vw((i-1)*size(vt6)+j) = w;
+        temp.t2 = t2;
+        vt2O((i-1)*size(vt6)+j) = t2;
+        temp.t6 = t6;
+        vt6O((i-1)*size(vt6)+j) = t6;
+        
+        %We now push point onto points.
+        points((i-1)*size(vt6)+j) = temp;    
+    end
+    waitbar(i/length(vt2), wait, strcat(['Simulations ', num2str(i/length(vt2)*100), '% Complete.']))
+end
+
+%We will now colour the data points for our data.  We will generate
+%appropriate colours depending on which of the constraints held through the
+%modeling.  The colour vector will be of size num squared.
+colours = char(zeros(1, num^2));
+
+%Green will represent all conditions satisfied.
+%Cyan will represent SSI > 1.2 (not satisfied).
+%Blue will represent Turbine Exhaust Quality < 0.85 (Damages turbine).
+%Red will represent neither the exhaust quality nor the SSI constraints
+%being satisfied.
+for i=1:length(colours)
+   if vx10(i) > 1 || vx5(i) > 1
+       %We mark superheated vapor data.
+       colours(i) = 'm';
+       continue
+   end
+   if vSSI(i) > 1.2
+       if vx5(i) < 0.85 || vx10(i) < 0.85
+          colours(i) =  'r';
+       else
+          colours(i) = 'c';
+       end
+   else
+       if vx10(i) < 0.85 %|| vx5(i) < 0.85 
+          colours(i) =  'b';
+       else
+          colours(i) = 'g';
+       end
+   end 
+end
+
+%We now have all of our data from our num^2 simulations.  We may now plot
+%the data.
+fig = 1;
+figure(fig)
+fig = fig + 1;
+hold on
+%Number of filtered results.
+removed = 0;
+for i=2:length(vt2O)
+    %For num > 20, there will be a data set that has skipped (0) t2 and t6
+    %values.  We skip these invalid inputs.  The index of this empty data
+    %is the same for t6O and vt2O.
+    %We also remove results where the vapor would be superheated (outside
+    %of ts curve) at states 5 and 10.
+    %We also remove work values outside the range of interest.
+    if i > length(vt2O)
+        break
+    end
+    if vt2O(i) == 0  || vw(i) < -1000 || vw(i) > 3000
+        vt2O(i) = [];
+        vt6O(i) = [];
+        vw(i) = [];
+        colours(i) = [];
+        vSSI(i) = [];
+        vx5(i) = [];
+        vx10(i) = [];
+        removed = removed + 1;
+        i = i - 1;
+        continue
+    end
+end
+cmap = containers
+xlabel('Separator Temperature - T_2 (K)')
+ylabel('Flash Vessel Temperature - T_6 (K)')
+zlabel('Specific Work Output per kg of Brine (kJ/kg)')
+hstruct = get(sc);
+legend(hstruct.Children, 'Test', 'test')
+%t1 is the brine, and t10 is the condensor.
+tb = strcat(['Brine Temperature: ', num2str(t1), ' (K)']);
+tc = strcat(['Condensor Temperature: ', num2str(t10), ' (K)']);
+title({tb; tc})
+hold off
+
+%Display removed.
+disp(['Removed ', num2str(removed), ' results.'])
+
+%We now remove the loop global.
+clear loop
+close(wait)
+
+%Display run time.
+toc
